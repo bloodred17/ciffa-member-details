@@ -1,11 +1,13 @@
+import { mongoose } from '@typegoose/typegoose';
 import { ciffaScraper } from './ciffa.scraper';
 import dotenv from 'dotenv';
 
 
 (async () => {
   dotenv.config();
+  await mongoose.connect('mongodb://localhost:27017/general_scraping')
 
-  const data = await ciffaScraper();
-  console.log(data);
+  await ciffaScraper();
 
+  await mongoose.disconnect();
 })()
