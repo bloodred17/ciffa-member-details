@@ -47,19 +47,13 @@ export const ciffaScraper = async () => {
     if (companyDetails?.length === 0) {
       throw new Error('Failed to fetch memebers');
     }
-
-    // Insert into database
-    console.log(companyDetails);
     await addToDb(companyDetails);
 
     // Load more
     let followingMembersHandle = await getMoreDataMembers(page, (companyDetails?.at(-1) as Detail)?.company);
     while(followingMembersHandle?.length > 0) {
       const arr = await Promise.all(followingMembersHandle?.map(captureData));
-
-      // Insert into database
-      console.log(arr);
-
+      await addToDb(companyDetails);
       followingMembersHandle = await getMoreDataMembers(page, (arr?.at(-1) as Detail)?.company);
     }
 
