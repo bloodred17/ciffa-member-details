@@ -1,4 +1,6 @@
-import { getModelForClass, modelOptions, prop } from '@typegoose/typegoose';
+import { getModelForClass, index, modelOptions, prop } from '@typegoose/typegoose';
+
+export type Trinary = 'yes' | 'no' | 'maybe';
 
 export class Contact {
   @prop()
@@ -13,6 +15,7 @@ export class Contact {
 }
 
 @modelOptions({ schemaOptions: { collection: 'ciffa_members' } })
+@index({ company_name: 1 }, { unique: true })
 export class CiffaMember {
   @prop()
   company_name: string;
@@ -27,7 +30,7 @@ export class CiffaMember {
   contact: Contact;
 
   @prop()
-  is_freight_forwarder: boolean;
+  is_freight_forwarder: Trinary;
 
   constructor(init: Partial<CiffaMember>) {
     Object.assign(this, init);

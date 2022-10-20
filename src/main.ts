@@ -7,7 +7,11 @@ import dotenv from 'dotenv';
   dotenv.config();
   await mongoose.connect('mongodb://localhost:27017/general_scraping')
 
-  await ciffaScraper();
+  try {
+    await ciffaScraper();
+  } catch (e) {
+    console.log(e);
+  }
 
   await mongoose.disconnect();
 })()

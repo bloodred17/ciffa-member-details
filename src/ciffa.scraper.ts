@@ -2,7 +2,7 @@ import { ElementHandle, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { CiffaMember, Contact } from './ciffa-member.schema';
-import { injectLocalJquery } from './scraping-util';
+import { delay, injectLocalJquery } from './scraping-util';
 puppeteer.use(StealthPlugin());
 
 type Detail = {
@@ -13,6 +13,7 @@ type Detail = {
   isFreightForwarder: string;
   carrierCode: string;
 }
+type Member = Promise<CiffaMember | null>;
 
 export const ciffaScraper = async () => {
   const proxy = JSON.parse(process.env.PROXY || '{}');
@@ -47,20 +48,29 @@ export const ciffaScraper = async () => {
     if (companyDetails?.length === 0) {
       throw new Error('Failed to fetch memebers');
     }
-    await addToDb(companyDetails);
+
+    const ciffaMembers_: Member[] = [];
+    for (const companyDetail of companyDetails) {
+      ciffaMembers_.push(addToDb(companyDetail));
+    }
 
     // Load more
     let followingMembersHandle = await getMoreDataMembers(page, (companyDetails?.at(-1) as Detail)?.company);
     while(followingMembersHandle?.length > 0) {
-      const arr = await Promise.all(followingMembersHandle?.map(captureData));
-      await addToDb(companyDetails);
-      followingMembersHandle = await getMoreDataMembers(page, (arr?.at(-1) as Detail)?.company);
+      const companyDetails = await Promise.all(followingMembersHandle?.map(captureData));
+      for (const companyDetail of companyDetails) {
+        ciffaMembers_.push(addToDb(companyDetail));
+      }
+      await delay(5000);
+      followingMembersHandle = await getMoreDataMembers(page, (companyDetails?.at(-1) as Detail)?.company);
     }
+
+    await Promise.allSettled(ciffaMembers_);
 
     await page?.close();
     await browser?.close();
 
-    return {};
+    return;
   }
   catch (e) {
     try {
@@ -94,8 +104,8 @@ const captureData = async (followingMemberHandle: ElementHandle<Node>) =>
       ?.replace('Location: ', '')?.trim();
     detail.phone = $(x).find('span:contains("Tel:")')?.last()
       ?.text()?.replace('Tel: ', '')?.trim();
-    detail.carrierCode = $(x).find('span:contains("Carrier Code:")')?.last()
-      ?.text()?.replace('Carrier Code: ', '')?.trim();
+    detail.carrierCode = $(x).find('p:contains("Carrier Code:")')?.last()
+      ?.text()?.replace('Carrier Code:', '')?.trim();
     detail.email = $(x).find('.email a')?.text()?.trim();
     detail.isFreightForwarder = ((ff: string) => {
       if (ff?.includes('yes')) {
@@ -114,28 +124,31 @@ const captureData = async (followingMemberHandle: ElementHandle<Node>) =>
 );
 
 const getMoreDataMembers = async (page: Page, companyName: string) => {
+  await page.waitForSelector('#member-dir-loadmore', { timeout: 10_000 });
   await page.click('#member-dir-loadmore', { delay: 40 });
+
   const xPath = followingMemberXPath(companyName);
   await page.waitForXPath(xPath, { timeout: 30_000 });
 
   return page.$x(xPath);
 }
 
-const addToDb = async (details: Detail[]) => {
-  for await (const detail of details) {
-    try {
-      const ciffaMember = new CiffaMember({
-        company_name: detail?.company,
-        location: detail?.location,
-        contact: new Contact({
-          phone: detail?.phone,
-          email: detail?.email,
-        }),
-        carrier_code: detail?.carrierCode,
-      });
-      await CiffaMember.model.create(ciffaMember);
-    } catch (e) {
-      console.log(e);
-    }
+const addToDb = async (detail: Detail) => {
+  try {
+    const ciffaMember = new CiffaMember({
+      company_name: detail?.company,
+      location: detail?.location,
+      contact: new Contact({
+        phone: detail?.phone,
+        email: detail?.email,
+      }),
+      carrier_code: detail?.carrierCode,
+    });
+    const created = await CiffaMember.model.create(ciffaMember);
+    return JSON.parse(JSON.stringify(created)) as CiffaMember;
+  }
+  catch (e) {
+    console.log(e);
+    return null;
   }
 }
